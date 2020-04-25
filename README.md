@@ -22,7 +22,7 @@ Some Information
 * To host the bot on Heroku, you need the ffmpeg buildpack. Click [here](https://elements.heroku.com/buildpacks/jonathanong/heroku-buildpack-ffmpeg-latest) and follow the instructions to add the buildpack  
 * Files in the folder `kadlemon` and `kadlepics` have been removed to respect privacy. Image files were named as `IMG1`, `IMG2` and so on while video files were named `VID1`, `VID2` and so on. Video files uploaded to discord need to be below 8MB.  
 * Your bot requires a Token to run, which can be obtained at _discordapp.com/developers/applications/me_  
-* Changes to the file system on Heroku are temporary and last only till the dyno is shut down or restarted. Hence, `spawnbot.py` uses MongoDB to store data. If you don't know how to do this, [here's a good tutorial](https://www.youtube.com/watch?v=rE_bJl2GAY8 "MondoDB Python Tutorial) to get you started.
+* Changes to the file system on Heroku are temporary and last only till the dyno is shut down or restarted. Hence, `spawnbot.py` uses MongoDB to store data. If you don't know how to do this, [here's a good tutorial](https://www.youtube.com/watch?v=rE_bJl2GAY8 "MondoDB Python Tutorial") to get you started.
 * If you're wondering what a _Kadle_ is, it's my friend's nickname. This bot was basically built to mock him
 
 `mainbot.py`
