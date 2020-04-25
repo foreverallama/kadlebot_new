@@ -8,16 +8,22 @@ Requirements
 * `discord[voice]` 1.3.0: `pip install discord.py[voice]` (More info [here](https://discordpy.readthedocs.io/en/latest/intro.html "Discord.py docs"))
 * `youtube-dl` 2020.3.24: `pip install youtube-dl`
 * `spotdl` 1.2.6: `pip install spotdl`
+* `spotipy` 2.11.1: `pip install spotipy`
 * `numpy` 1.18.2: `pip install numpy`
+* `pymongo` 3.9.0: `pip install pymongo
+* `dnspython` 1.16.0: `pip install pymongo[srv]
 * `libopus.so` opus library if you're using linux (included by default for windows)(optional, voice only)
 * FFmpeg is required to stream audio. It can be downloaded from [here](https://www.ffmpeg.org/download.html "FFmpeg")
 * The files `runtime.txt`, `requirements.txt`, `Procfile` and `libopus.so` are required to deploy it on Heroku. Check the [Heroku Docs](https://devcenter.heroku.com/categories/command-line "Heroku CLI") to find out how to deploy this on Heroku
 * The _updates_ folder contains Cogs which will be added sometime in the future
 
-**Note1**: To host the bot on Heroku, you need the ffmpeg buildpack. Click [here](https://elements.heroku.com/buildpacks/jonathanong/heroku-buildpack-ffmpeg-latest) and follow the instructions to add the buildpack  
-**Note2**: Files in the folder `kadlemon` and `kadlepics` have been removed to respect privacy. Image files were named as `IMG1`, `IMG2` and so on while video files were named `VID1`, `VID2` and so on. Video files uploaded to discord need to be below 8MB.  
-**Note3**: Your bot requires a Token to run, which can be obtained at _discordapp.com/developers/applications/me_  
-**Note4**: If you're wondering what a _Kadle_ is, it's my friend's nickname. This bot was basically built to mock him
+Some Information
+================
+* To host the bot on Heroku, you need the ffmpeg buildpack. Click [here](https://elements.heroku.com/buildpacks/jonathanong/heroku-buildpack-ffmpeg-latest) and follow the instructions to add the buildpack  
+* Files in the folder `kadlemon` and `kadlepics` have been removed to respect privacy. Image files were named as `IMG1`, `IMG2` and so on while video files were named `VID1`, `VID2` and so on. Video files uploaded to discord need to be below 8MB.  
+* Your bot requires a Token to run, which can be obtained at _discordapp.com/developers/applications/me_  
+* Changes to the file system on Heroku are temporary and last only till the dyno is shut down or restarted. Hence, `spawnbot.py` uses MongoDB to store data. If you don't know how to do this, [here's a good tutorial](https://www.youtube.com/watch?v=rE_bJl2GAY8 "MondoDB Python Tutorial) to get you started.
+* If you're wondering what a _Kadle_ is, it's my friend's nickname. This bot was basically built to mock him
 
 `mainbot.py`
 ===========
@@ -107,6 +113,7 @@ Runs a chat filter for certain _swear words_ and the word _wonderla_
 
 This Cog is a basic implementation trying to mimic Pokecord. Check out Pokecord [here](https://www.pokecord.com/ "Pokecord").
 Everytime a message is sent on a server a random number between _1_ to _1000_ is generated. If the number is greater than _920_, it spawns a Kadle. Different images spawn with different probabilities as defined by the list `weights` under the function `spawn_image`
+
 
 Commands
 --------------

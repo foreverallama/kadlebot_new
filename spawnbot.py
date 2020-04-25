@@ -1,14 +1,15 @@
 import discord
 from discord.ext import commands
 import random
-from random import choices
 import numpy
+import pymongo
+from pymongo import MongoClient
+import os
 
-
-spawn_channel = {}
-kadledex = {}
 moves = ['Dengbidthini', 'Hari Om', 'Tunne', 'Fuck You', 'Amman', 'Minni Kai', 'Buttsex']
 spawn_flag = {}
+
+collection = None
 
 class Spawn(commands.Cog):
     """
@@ -27,45 +28,52 @@ class Spawn(commands.Cog):
     """
 
     def __init__(self,bot):
-        global kadledex
+        global spawn_flag, collection
         self.bot = bot
         
         for guild in self.bot.guilds:
             spawn_flag[guild.id] = True
-            kadledex[guild.id] = {}
-            for member in guild.members:
-                kadledex[guild.id][member.id] = {}
-        print('Initialized Kadledex on Reload')
+
+        print('Reloading spawnbot')
+
+        try:
+            MONGO = os.environ.get('MONGO', None)
+            url = "mongodb+srv://kadleBot:" + str(MONGO) + "@kadlebot-t63y9.mongodb.net/test?retryWrites=true&w=majority"
+            cluster = MongoClient(url)
+            db = cluster["discord"]
+            collection = db["kadledex"]
+            print('Connected to Mongodb')
+        except pymongo.errors.ServerSelectionTimeoutError:
+            print('Mongodb: TimeoutError. Could not retrieve Spawn Channel')
 
     @commands.Cog.listener('on_ready')
-    async def initialize_kadledex(self):
-        global kadledex, spawn_flag
-        
+    async def init_spawn(self):
+        global spawn_flag
         for guild in self.bot.guilds:
             spawn_flag[guild.id] = True
-            kadledex[guild.id] = {}
-            for member in guild.members:
-                kadledex[guild.id][member.id] = {}
-        print('Initialized Kadledex on Login')        
+        print('KadleBot is ready. Initialized Spawn Flags')
 
     @commands.Cog.listener('on_message')
     async def spawn_image(self, message):
-        global spawn_channel, kadledex, moves, spawn_flag
+        global collection, moves, spawn_flag
         
         if message.author == self.bot.user or message.content.startswith('kadle.'):
             return
         a = random.randint(0,1000)
-        if a > 920 and spawn_flag[message.guild.id]==True:
+        if a > 920 and spawn_flag[message.guild.id] is True:
             weights = [0.09, 0.2, 0.061, 0.06, 0.12, 0.12, 0.08, 0.1, 0.1, 0.067, 0.002] 
             file_path = "./kadlemon/IMG" + str(numpy.random.choice(numpy.arange(1,12), p=weights)) + ".jpg"
-            if message.guild.id in spawn_channel.keys():
-                message.channel = spawn_channel[message.guild.id]
+
+            query = {"_id": message.guild.id, "channel": {"$exists": True}}
+            results = collection.find_one(query)
+            if results:
+                message.channel = self.bot.get_channel(results["channel"])
 
             await message.channel.send(content="A wild Kadle appeared!",
                                        delete_after=60,
                                        file=discord.File(fp=file_path,
                                                          filename="Kadlemon.jpg"))
-            spawn_flag[message.guild.id]=False
+            spawn_flag[message.guild.id] = False
 
             def check(m):
                 global spawn_flag
@@ -75,24 +83,57 @@ class Spawn(commands.Cog):
 
             try:
                 msg = await self.bot.wait_for('message', check=check, timeout=60)
-                level = random.randint(4,32)
-                await msg.channel.send(f"Congratulations {msg.author.mention}! You caught a Level {level} Kadle!", delete_after=20)
-
-                kadledex[msg.guild.id][msg.author.id]["Select"] = 0
-                
-                res = -1
-                for key in kadledex[msg.guild.id][msg.author.id].keys():
-                    res += 1
-                    
-                kadledex[msg.guild.id][msg.author.id][res+1] = {}
-                kadledex[msg.guild.id][msg.author.id][res+1]["Name"] = "Kadle"
-                kadledex[msg.guild.id][msg.author.id][res+1]["Level"] = level
-                kadledex[msg.guild.id][msg.author.id][res+1]["Moves"] = random.sample(moves,4)
-                
-
-            except:
-                await message.channel.send("Oh no! The wild Kadle fled",delete_after=20)
+            except Exception as e:
+                await message.channel.send("Oh no! The wild Kadle fled", delete_after=20)
                 spawn_flag[message.guild.id] = True
+                return
+
+            level = random.randint(4,32)
+            await msg.channel.send(f"Congratulations {msg.author.mention}! You caught a Level {level} Kadle!", delete_after=20)
+
+            query = {"_id": msg.guild.id}
+            results = collection.find_one(query)
+
+            if results is None:
+                post = {"_id": msg.guild.id,
+                        str(msg.author.id):
+                            {"1":
+                                 {"Name": "Kadle",
+                                  "Level": level,
+                                  "Moves": random.sample(moves, 4)
+                                  },
+                             "S": 1
+                             }
+                        }
+                results = collection.insert_one(post)
+
+            else:
+                results = collection.find_one({"_id": msg.guild.id, str(msg.author.id): {"$exists": True}})
+
+                results = list(results[str(msg.author.id)].keys())
+                results.remove('S')
+                results = list(map(int, results))
+                results.sort()
+
+                final_res = results[-1] + 1
+                for i in range(1, results[-1] + 1):
+                    if i not in results:
+                        final_res = i
+                        break
+
+                post = {"$set":
+                    {
+                        str(msg.author.id) + "." + str(final_res):
+                            {
+
+                                "Name": "Kadle",
+                                "Level": level,
+                                "Moves": random.sample(moves, 4)
+                            }
+                    }
+                }
+
+                results = collection.update_one({"_id": msg.guild.id}, post)
 
     @commands.command(name='spawn',
                       description='Sets the channel for kadle to spawn in',
@@ -103,78 +144,93 @@ class Spawn(commands.Cog):
                       cog='Spawn'
                       )
     async def spawn(self, ctx, payload=None):
-        global spawn_channel
+        global collection
+
         channel = ctx.message.channel_mentions[0]
-        spawn_channel[ctx.guild.id] = channel
+
+        query = {"_id": ctx.guild.id, "channel": {"$exists": True}}
+        results = collection.find_one(query)
+        if not results:
+            collection.insert_one({"_id": ctx.guild.id, "channel": channel.id})
+        else:
+            results = collection.update_one({"_id": ctx.guild.id}, {"$set": {"channel": channel.id}})
+
         await ctx.send(f"Kadle will now spawn in the text channel {ctx.message.channel_mentions[0].mention}")
 
     @commands.command(name='list')
     async def list(self, ctx, payload = 1):
-        global kadledex
-        user_id = ctx.message.author.id
+        global collection
 
         upper_limit = payload*10 + 1
 
-        if (upper_limit-10) not in kadledex[ctx.guild.id][user_id].keys():
+        results = collection.find_one({"_id": ctx.guild.id, str(ctx.message.author.id): {"$exists": True}})
+        if results is None:
+            await ctx.send("You haven't caught any Kadles yet")
+            return
+        elif len(results[str(ctx.message.author.id)].keys()) < upper_limit - 10:
             await ctx.send("You haven't caught that many Kadles yet")
             return
-        
+
+        results[str(ctx.message.author.id)].pop('S')
+        keys = sorted(results[str(ctx.message.author.id)].keys(), key=lambda x: int(x))
         op = "```"
 
-        for key in kadledex[ctx.guild.id][user_id]:
-            if isinstance(key, int):
-                if key >= upper_limit - 10 and key < upper_limit:
-                    op += kadledex[ctx.guild.id][user_id][key]["Name"]  + "     #" + str(key) + "     Level " + str(kadledex[ctx.guild.id][user_id][key]["Level"])
-                    op += "\n"
-            last_key = key
-        op+="```"
+        for key in keys:
+            if upper_limit - 10 <= int(key) < upper_limit:
+                op += results[str(ctx.message.author.id)][key]["Name"] + "     #" + str(key) + \
+                      "      Level " + str(results[str(ctx.message.author.id)][key]["Level"])
+            op += "\n"
+            last_key = int(key)
+        op += "```"
+
+        if last_key <= upper_limit - 1:
+            page_limit = last_key
+        else:
+            page_limit = upper_limit - 1
 
         e = discord.Embed(type="rich", color=0x91f735)
         e.title = str(ctx.message.author) + "'s Kadles"
         e.add_field(name=f"Page {payload}", value=op)
-        e.set_footer(text=f"Showing {upper_limit-10} to {upper_limit-1} of {last_key} Kadles on this page")
+        e.set_footer(text=f"Showing {upper_limit - 10} to {page_limit} of {last_key} Kadles on this page")
 
         await ctx.send(embed=e, delete_after=300)
 
     @commands.command(name='select')
     async def select(self, ctx, payload: int):
-        global kadledex
-        user_id = ctx.message.author.id
+        global collection
 
-        try:
-            if payload in kadledex[ctx.guild.id][user_id].keys():
-                kadledex[ctx.guild.id][user_id]["Select"] = payload
-            else:
-                await ctx.send("You don't have that Kadle yet")
-                return
-        except:
-            await ctx.send("You don't have any Kadles yet")
+        results = collection.find_one({"_id": ctx.guild.id, str(ctx.message.author.id): {"$exists": True}})
+
+        if results is None:
+            await ctx.send("You haven't caught any Kadle yet")
             return
 
-        await ctx.send(f"You have selected Kadle #{payload}")
+        if str(payload) in results[str(ctx.message.author.id)].keys():
+            results = collection.update_one({"_id": ctx.guild.id},
+                                            {"$set": {str(ctx.message.author.id) + "." + "S": payload}})
+            await ctx.send(f"You have selected Kadle #{payload}")
+        else:
+            await ctx.send("You haven't caught that Kadle yet")
 
     @commands.command(name='moves')
     async def moves(self, ctx):
-        global kadledex
-        user_id = ctx.message.author.id
+        global collection
 
-        try:
-            number = kadledex[ctx.guild.id][user_id]["Select"]
-            if number == 0:
-                await ctx.send("You have to select a Kadle first. Type kadle.list to find out what Kadles you've caught")
-                return
-        except:
-            await ctx.send("You don't have that Kadle yet")
+        results = collection.find_one({"_id": ctx.guild.id, str(ctx.message.author.id): {"$exists": True}})
+
+        if results is None:
+            await ctx.send("You haven't caught any Kadle yet")
             return
 
+        number = results[str(ctx.message.author.id)]["S"]
+        level = str(results[str(ctx.message.author.id)][str(number)]["Level"])
+        op = '\n'.join(results[str(ctx.message.author.id)][str(number)]["Moves"])
+        name = results[str(ctx.message.author.id)][str(number)]["Name"]
 
         e = discord.Embed(type="rich", color=0x91f735)
         e.set_author(name=str(ctx.message.author) + "'s Kadle")
-        e.title = "Level " + str(kadledex[ctx.guild.id][user_id][number]["Level"]) + " " + kadledex[ctx.guild.id][user_id][number]["Name"]
-
-        op = '\n'.join(kadledex[ctx.guild.id][user_id][number]["Moves"])
+        e.title = "Level " + level + " " + name
         e.add_field(name=f"Moves", value=op)
-
         await ctx.send(embed=e, delete_after=300)
 
 def setup(bot):
