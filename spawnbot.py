@@ -148,7 +148,7 @@ class Spawn(commands.Cog):
 
         channel = ctx.message.channel_mentions[0]
 
-        query = {"_id": ctx.guild.id, "channel": {"$exists": True}}
+        query = {"_id": ctx.guild.id}
         results = collection.find_one(query)
         if not results:
             collection.insert_one({"_id": ctx.guild.id, "channel": channel.id})
