@@ -6,7 +6,8 @@ import youtube_dl
 from discord.ext import commands
 from discord.utils import get
 import random
-import json
+import pymongo
+from pymongo import MongoClient
 
 ## Use this if you are going to upload this on Heroku
 if not discord.opus.is_loaded():
@@ -18,6 +19,7 @@ if not discord.opus.is_loaded():
 ## To ensure data is saved across dynos, you need to link your bot to a database
 ## Look up mongodb or others
 song_list_queue = {}
+collection = None
 
 def __init__(self, bot):
     self.bot = bot
@@ -52,7 +54,18 @@ class MusicBot(commands.Cog):
 
     """
     def __init__(self, bot):
+        global collection
+
         self.bot = bot
+        try:
+            MONGO = os.environ.get('MONGO', None)
+            url = "mongodb+srv://kadleBot:" + str(MONGO) + "@kadlebot-t63y9.mongodb.net/test?retryWrites=true&w=majority"
+            cluster = MongoClient(url)
+            db = cluster["discord"]
+            collection = db["kadledex"]
+            print('Connected to Mongodb.musicbot')
+        except pymongo.errors.ServerSelectionTimeoutError:
+            print('Mongodb: TimeoutError. Could not connect musicbot')
 
     @commands.command(name='Join',
                       description='Join voice',
@@ -123,7 +136,7 @@ class MusicBot(commands.Cog):
                       cog='MusicBot'
                       )
     async def play(self, ctx, *url: str):
-        global song_list_queue
+        global song_list_queue, collection
 
         voice = get(self.bot.voice_clients, guild=ctx.guild)
         
@@ -131,11 +144,11 @@ class MusicBot(commands.Cog):
             await ctx.send("You have to add me to a voice channel first")
             return
 
-##        List of predifined URLs to download from if user does not specify a song
+        # List of predifined URLs to download from if user does not specify a song
         list_of_bhajans = ['https://www.youtube.com/watch?v=iW16WWmWZL4',
-               'https://www.youtube.com/watch?v=2yAzgg3zEjM',
-               'https://www.youtube.com/watch?v=Ezhdk82sR1Y',
-               ]
+                           'https://www.youtube.com/watch?v=2yAzgg3zEjM',
+                           'https://www.youtube.com/watch?v=Ezhdk82sR1Y',
+                           ]
         if not url:
             url = random.choice(list_of_bhajans)
             
@@ -150,11 +163,10 @@ class MusicBot(commands.Cog):
             if Queue_infile is True:
                 DIR = os.path.abspath(os.path.realpath(str(ctx.guild.id) + "/Queue"))
                 length = len(os.listdir(DIR))
-                still_q = length - 1            
                 try:
                     first_file = os.listdir(DIR)[0]
                 except:
-##                    print("No more queued song(s)\n")                    
+                    # print("No more queued song(s)\n")
                     removed_value = song_list_queue.pop(ctx.guild.id, 'No Key Found')
                     return
                 main_location = os.path.dirname(os.path.realpath(__file__))
@@ -162,8 +174,8 @@ class MusicBot(commands.Cog):
                 song_path = os.path.abspath(os.path.realpath(str(ctx.guild.id) + "/Queue") + "/" + first_file)
                 
                 if length != 0:
-##                    print("Song done, playing next queued\n")
-##                    print(f"Songs still in queue: {still_q}")
+                    # print("Song done, playing next queued\n")
+                    # print(f"Songs still in queue: {still_q}")
                     song_there = os.path.isfile(str(ctx.guild.id) + "/song.mp3")
                     if song_there:
                         os.remove(str(ctx.guild.id) + "/song.mp3")
@@ -183,36 +195,34 @@ class MusicBot(commands.Cog):
                     return
 
             else:               
-                removed_value = song_list_queue.pop(ctx.guild.id, 'No Key Found')                            
-##                print("No songs were queued before the ending of the last song\n")
+                removed_value = song_list_queue.pop(ctx.guild.id, 'No Key Found')
+                # print("No songs were queued before the ending of the last song\n")
 
-
-
-        song_there = os.path.isfile(str(ctx.guild.id) + "/song.mp3")        
+        song_there = os.path.isfile(str(ctx.guild.id) + "/song.mp3")
         try:
             if song_there:
                 os.remove(str(ctx.guild.id) + "/song.mp3")           
                 removed_value = song_list_queue.pop(ctx.guild.id, 'No Key Found')                
-##                print("Removed old song file")
+                # print("Removed old song file")
         except PermissionError:
-##            print("Trying to delete song file, but it's being played")
-            await ctx.send("A song is already playing. Type kadle.queue [song] to add a song to the queue. To delete the queue, type kadle.stop")
+            # print("Trying to delete song file, but it's being played")
+            await ctx.send("A song is already playing. Type kadle.add [song] to add a song to the queue. " 
+                           "To delete the queue, type kadle.stop")
             return
 
-
-        Queue_infile = os.path.isdir("./" + str(ctx.guild.id) + "/Queue")        
+        Queue_infile = os.path.isdir("./" + str(ctx.guild.id) + "/Queue")
         try:
             Queue_folder = "./" + str(ctx.guild.id) + "/Queue"            
             if Queue_infile is True:
-##                print("Removed old Queue Folder")
+                # print("Removed old Queue Folder")
                 shutil.rmtree(Queue_folder)
         except:
-##            print("No old Queue folder")
+            # print("No old Queue folder")
             pass
 
-        await ctx.send("Getting things ready. Please wait")
+        await ctx.send("Getting things ready. Please wait", delete_after=20)
         
-        ## Check docs of youtube-dl for more info
+        # Check docs of youtube-dl for more info
         ydl_opts = {
             'format': 'bestaudio/best',
             'quiet': False,
@@ -229,17 +239,12 @@ class MusicBot(commands.Cog):
         else:
             song_search = " ".join(url)
 
-        with open('server_settings/search_options.json', 'r') as jsonFile:
-            try:
-                data = json.load(jsonFile)
-                print("Data:\n")
-                print(data)
-            except:
-                data = {}
-                data[str(ctx.guild.id)] = "YOUTUBE"
-
-        search_method = data[str(ctx.guild.id)]
-        print("Search Method: " + search_method)
+        query = {"_id": ctx.guild.id, "music_search": {"$exists": True}}
+        results = collection.find_one(query)
+        if not results:
+            search_method = "YOUTUBE"
+        else:
+            search_method = results["music_search"]
 
         if search_method == "YOUTUBE":
 
@@ -261,11 +266,11 @@ class MusicBot(commands.Cog):
                 return
 
         else:
-            
-            try:                
+
+            try:
                 c_path = os.path.dirname(os.path.realpath(__file__))
                 c_path += "/" + str(ctx.guild.id) 
-                system("spotdl -f " + '"' + c_path + '"' + " -s " + song_search)
+                system("spotdl -f " + '"' + c_path + '"' + " -s " + '"' + song_search + '"')
                 for file in os.listdir("./" + str(ctx.guild.id)):
                     if file.endswith(".mp3"):
                         song_title = file[:-4]
@@ -276,7 +281,6 @@ class MusicBot(commands.Cog):
                 print("Error in Spotify download")
                 await ctx.send("Sorry. I encountered an error. Please try again later")
                 return
-            
 
         voice.play(discord.FFmpegPCMAudio(str(ctx.guild.id) + "/song.mp3"), after=lambda e: check_queue())
         voice.source = discord.PCMVolumeTransformer(voice.source)
@@ -323,7 +327,6 @@ class MusicBot(commands.Cog):
             await ctx.send("Resumed the player")
         else:
             await ctx.send("Resume your ass")
-
 
     @commands.command(name='Stop',
                       description='Stops the player',
@@ -421,22 +424,20 @@ class MusicBot(commands.Cog):
         else:
             song_search = " ".join(url)
 
-        await ctx.send("Getting Things ready. Please Wait")
+        await ctx.send("Getting Things ready. Please Wait", delete_after=20)
 
-        with open('server_settings/search_options.json') as jsonFile:
-            try:
-                data = json.load(jsonFile)
-            except:
-                data = {}
-                data[str(ctx.guild.id)] = "YOUTUBE"
-
-        search_method = data[str(ctx.guild.id)]
+        query = {"_id": ctx.guild.id, "music_search": {"$exists": True}}
+        results = collection.find_one(query)
+        if not results:
+            search_method = "YOUTUBE"
+        else:
+            search_method = results["music_search"]
 
         if search_method == "YOUTUBE":
 
             try:
                 with youtube_dl.YoutubeDL(ydl_opts) as ydl:
-    ##                print("Downloading audio now\n")
+                    # print("Downloading audio now\n")
                     ydl.download([f"ytsearch1:{song_search}"])
                     info_dict = ydl.extract_info(f"ytsearch1:{song_search}", download=False, ie_key='YoutubeSearch')
                     song_title = None
@@ -454,9 +455,9 @@ class MusicBot(commands.Cog):
         else:
                 
             try:
-##                print("FALLBACK: youtube-dl does not support this URL, using Spotify (This is normal if Spotify URL)")
+                # print("FALLBACK: youtube-dl does not support this URL, using Spotify (This is normal if Spotify URL)")
                 q_path = os.path.abspath(os.path.realpath(str(ctx.guild.id) + "/Queue"))
-                system(f"spotdl -f " + '"' + q_path + '"' + " -s " + song_search)
+                system(f"spotdl -f " + '"' + q_path + '"' + " -s " + '"' + song_search + '"')
                 for file in os.listdir("./" + str(ctx.guild.id) + "/Queue"):
                     if file.endswith(".mp3"):
                         song_title = file[:-4]
@@ -473,9 +474,7 @@ class MusicBot(commands.Cog):
         else:
             await ctx.send("Added " + song_title + " to the queue")
 
-
         print("Song added to queue\n")
-
 
     @commands.command(name='Next',
                       description='Plays next song in queue',
@@ -504,7 +503,6 @@ class MusicBot(commands.Cog):
             await ctx.send("Playing the next song in queue")
         else:
             await ctx.send("There are no songs in queue")
-
 
     @commands.command(name='Volume',
                       description='Adjusts the player volume',
@@ -569,24 +567,17 @@ class MusicBot(commands.Cog):
         available_opts = ['SPOTIFY', 'YOUTUBE']
 
         if any(word in payload.upper() for word in available_opts):
-            with open('server_settings/search_options.json', 'r') as jsonFile:
-                try:
-                    data = json.load(jsonFile)
-                except:
-                    data = {}
-
-            data[str(ctx.guild.id)] = payload.upper()
-            print("Set search data:\n")
-            print(data)
-
-            with open('server_settings/search_options.json', 'w') as jsonFile:
-                json.dump(data, jsonFile)
+            query = {"_id": ctx.guild.id}
+            results = collection.find_one(query)
+            if not results:
+                collection.insert_one({"_id": ctx.guild.id, "music_search": payload.upper()})
+            else:
+                results = collection.update_one({"_id": ctx.guild.id}, {"$set": {"music_search": payload.upper()}})
             
             await ctx.send(f"Search option has been set to {payload}")
 
         else:
             await ctx.send("That is not an available option")
-        
                 
 def setup(bot):
     bot.add_cog(MusicBot(bot))
